@@ -3,6 +3,9 @@
 **Distribution officielle du modèle maître complet et de son runtime exclusif — RATISS Labs**  
 *Auteur : Jonathan Evina · Yaoundé, Cameroun 🇨🇲 · Licence MIT*
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jonathansearch/RATISS-ONE/blob/main/colab/Entrainement_RATISS_ONE.ipynb)
+[![License: MIT](https://img.shields.io/badge/Code-MIT-teal.svg)](LICENSE)
+
 ---
 
 ## 📦 Ce que contient ce dépôt (Le Vrai Modèle, Zéro Superflu)
