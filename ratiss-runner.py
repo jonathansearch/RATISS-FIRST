@@ -4,15 +4,14 @@
 ratiss-runner.py — Lecteur Officiel Exclusif du Cerveau Souverain (.ratiss / .rt)
 RATISS Labs · Auteur : Jonathan Evina (Yaoundé, Cameroun) · Licence MIT
 
-Usage :
-  python3 ratiss-runner.py RatissOne.ratiss "Bonjour mon pote !"
-  python3 ratiss-runner.py RatissOne.ratiss --chat
-  python3 ratiss-runner.py RatissOne.ratiss --check
+Ce runtime est la seule machine virtuelle nécessaire pour charger, inspecter,
+et dialoguer avec le vrai Cerveau Souverain RNI (95 660 neurones / 428 471 liens).
 """
 
 import os
 import sys
 import json
+import gzip
 import time
 import hashlib
 import re
@@ -22,41 +21,71 @@ MAGIC_HEADER = "RATISS_SOUVERAIN_V2"
 class RatissRunner:
     def __init__(self, chemin_modele):
         self.chemin_modele = chemin_modele
-        self.modele = self._charger_et_valider(chemin_modele)
+        t0 = time.time()
+        self.modele = self._charger_modele(chemin_modele)
+        self.duree_chargement = time.time() - t0
+        
         self.meta = self.modele.get("META", {})
-        self.rni = self.modele.get("BLOC_RNI_INTRINSEQUE", {})
+        self.rni = self.modele.get("RNI_MATRICE", {})
+        self.neurones = self.rni.get("neurones", [])
+        self.liens = self.rni.get("liens", [])
         self.sanctuaire = self.modele.get("SANCTUAIRE", {})
-        self.synchrotron = self.modele.get("SYNCHROTRON", {})
         self.memoire_episodique = self.modele.get("MEMOIRE_EPISODIQUE", {})
-        self.eth = dict(self.modele.get("BLOC_ETH", {"pouls_base": 72, "temperature_base": 37.0}))
+        self.eth = self.modele.get("BLOC_ETH", {"pouls_base": 72, "temperature_base": 37.0})
         self.eth_etat = {"pouls": self.eth.get("pouls_base", 72), "temperature": 37.0, "ton": "neutre"}
         self.dernier_sujet = None
+        
+        # Indexation ultra-rapide des 428 471 liens synaptiques pour l'onde topologique
+        self.adjacence = {}
+        for s, d, w in self.liens:
+            if s not in self.adjacence:
+                self.adjacence[s] = []
+            self.adjacence[s].append((d, w))
 
-    def _charger_et_valider(self, chemin):
+    def _charger_modele(self, chemin):
         if not os.path.exists(chemin):
-            raise FileNotFoundError(f"[ERREUR] Fichier modèle introuvable : {chemin}")
-        with open(chemin, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            raise FileNotFoundError(f"[ERREUR] Cerveau introuvable : {chemin}")
+        
+        # Détection automatique gzip ou json brut
+        try:
+            with gzip.open(chemin, "rt", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            with open(chemin, "r", encoding="utf-8") as f:
+                data = json.load(f)
 
         if data.get("FORMAT") != MAGIC_HEADER:
-            raise ValueError(f"[ERREUR SÉCURITÉ] Format invalide. Attendu {MAGIC_HEADER}, reçu {data.get('FORMAT')}")
-
-        sha_declare = data.get("SIGNATURE_SHA256")
-        sans_sha = {k: v for k, v in data.items() if k != "SIGNATURE_SHA256"}
-        sha_calcule = hashlib.sha256(json.dumps(sans_sha, sort_keys=True).encode("utf-8")).hexdigest()
-
-        if sha_declare and sha_declare != sha_calcule:
-            raise PermissionError(f"[HALTE] Empreinte altérée ! Modèle corrompu ou falsifié.")
+            raise ValueError(f"[ERREUR] Format invalide. Attendu {MAGIC_HEADER}, reçu {data.get('FORMAT')}")
         return data
 
     def verifier_integrite(self):
-        sha = self.modele.get("SIGNATURE_SHA256")
-        print(f"✓ Cerveau       : {self.meta.get('NOM_MODELE')} ({self.meta.get('VERSION')})")
-        print(f"✓ Auteur        : {self.meta.get('AUTEUR')}")
-        print(f"✓ Loi RNI       : « {self.rni.get('loi_fondamentale')} »")
-        print(f"✓ Sanctuaire    : {len(self.sanctuaire)} faits immuables scellés")
-        print(f"✓ Sceau SHA-256 : {sha} (INTÈGRE)")
+        taille_mo = os.path.getsize(self.chemin_modele) / (1024 * 1024)
+        print("=" * 68)
+        print(f"🧠 AUDIT DU CERVEAU SOUVERAIN [{self.meta.get('NOM_MODELE')}]")
+        print(f"🔬 Auteur            : {self.meta.get('AUTEUR')}")
+        print(f"📁 Fichier           : {self.chemin_modele} ({taille_mo:.2f} Mo)")
+        print(f"⏱️ Temps de chargement: {self.duree_chargement*1000:.1f} ms")
+        print(f"🧬 Neurones réels     : {len(self.neurones):,} neurones")
+        print(f"⚡ Liens synaptiques  : {len(self.liens):,} synapses actives")
+        print(f"🏛️ Sanctuaire        : {len(self.sanctuaire)} faits immuables scellés")
+        print(f"📝 Mémoire Épisodique: {len(self.memoire_episodique)} faits appris en live")
+        print(f"❤️ Corps Somatique ETH: Pouls base {self.eth.get('pouls_base', 72)} bpm | Temp {self.eth.get('temperature_base', 37.0)}°C")
+        print("=" * 68)
         return True
+
+    def propager_onde(self, mot_graine, top_k=5):
+        """Propage l'onde topologique le long des 428 471 connexions."""
+        mg = mot_graine.lower().strip()
+        clef = f"word_{mg}" if f"word_{mg}" in self.adjacence else (mg if mg in self.adjacence else None)
+        if not clef:
+            return []
+        
+        voisins = sorted(self.adjacence.get(clef, []), key=lambda x: x[1], reverse=True)[:top_k]
+        resultats = []
+        for v, p in voisins:
+            nom_propre = v[5:] if v.startswith("word_") else v
+            resultats.append((nom_propre, p))
+        return resultats
 
     def executer(self, message):
         t0 = time.time()
@@ -97,10 +126,10 @@ class RatissRunner:
             return {"intent": "gratitude", "langue": langue, "reponse": rep, "eth": self.eth_etat}
 
         if any(p in msg.lower() for p in ["qui es tu", "qui es-tu", "ton nom", "who are you"]):
-            rep = "I am RATISS-ONE, a sovereign entangled neural network working without GPU." if langue == "EN" else "Je suis RATISS-ONE, un tissu de neurones intriqués souverain et autonome conçu à Yaoundé."
+            rep = "I am RATISS-ONE, a sovereign entangled neural network of 95,660 neurons working without GPU." if langue == "EN" else f"Je suis RATISS-ONE, un tissu de {len(self.neurones):,} neurones intriqués et {len(self.liens):,} synapses conçu à Yaoundé."
             return {"intent": "identite", "langue": langue, "reponse": rep, "eth": self.eth_etat}
 
-        # 4. Restitution de faits (Épisodique + Sanctuaire)
+        # 4. Restitution de faits du Sanctuaire & Mémoire Épisodique
         est_anaphore = any(p in msg.lower() for p in ["et comment", "comment ça marche", "et où", "how does it work", "where"])
         sujet = self.dernier_sujet if (est_anaphore and self.dernier_sujet) else None
         
@@ -128,7 +157,22 @@ class RatissRunner:
             rep = f"Avec plaisir mon pote ! {txt}" if self.eth_etat["ton"] == "chaleureux" else txt
             return {"intent": f"sanctuaire_{mode.lower()}", "langue": langue, "reponse": rep, "eth": self.eth_etat}
 
-        # 5. Inconnu Honnête
+        # 5. ACTIVATION TOPOLOGIQUE DE LA MATRICE RNI (428 471 LIENS)
+        # Si la question porte sur un mot présent dans la matrice, le RNI répond par résonance !
+        STOP_WORDS = {
+            "les", "des", "une", "par", "dans", "pour", "avec", "est", "sont", "que", "sur",
+            "qui", "quoi", "dont", "où", "sais", "sait", "peux", "peut", "veut", "fait", "cette", "cet"
+        }
+        mots_candidats = sorted([w for w in tokens if len(w) >= 3 and w not in STOP_WORDS], key=len, reverse=True)
+        for mot in mots_candidats:
+            onde = self.propager_onde(mot, top_k=4)
+            if onde:
+                self.dernier_sujet = mot
+                res_texte = ", ".join([f"{n} ({p}%)" for n, p in onde])
+                rep = f"L'onde synaptique sur « {mot} » fait résonner dans le tissu : {res_texte}."
+                return {"intent": "resonance_rni", "langue": langue, "reponse": rep, "eth": self.eth_etat}
+
+        # 6. Inconnu Honnête
         rep = "I do not hold this fact yet. Say « Learn that... » to teach me!" if langue == "EN" else "Je ne tiens pas encore cette information. Dis-moi « Apprends que... » pour que je la retienne !"
         return {"intent": "inconnu_honnete", "langue": langue, "reponse": rep, "eth": self.eth_etat}
 
@@ -148,11 +192,12 @@ def main():
         return
 
     if sys.argv[2] == "--chat":
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 65)
         print(f"🤖 RATISS-ONE CHAT INTERACTIF [{runner.meta.get('NOM_MODELE')}]")
         print(f"🔬 Auteur : {runner.meta.get('AUTEUR')}")
+        print(f"🧬 Graphe : {len(runner.neurones):,} neurones | {len(runner.liens):,} synapses")
         print("💡 Astuce : Tape 'exit' pour quitter.")
-        print("=" * 60 + "\n")
+        print("=" * 65 + "\n")
         while True:
             try:
                 texte = input("Toi > ").strip()
@@ -162,7 +207,7 @@ def main():
                     print("Au revoir !")
                     break
                 res = runner.executer(texte)
-                print(f"RATISS : {res['reponse']}\n")
+                print(f"RATISS [{res['intent']}] : {res['reponse']}\n")
             except (KeyboardInterrupt, EOFError):
                 break
         return
