@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ratiss-runner.py — Lecteur Officiel Exclusif du Cerveau Souverain (.ratiss / .rt)
+ratiss-runner.py — Lecteur Universel Officiel du Cerveau Souverain (.ratiss / .npz)
 RATISS Labs · Auteur : Jonathan Evina (Yaoundé, Cameroun) · Licence MIT
 
 Ce runtime est la seule machine virtuelle nécessaire pour charger, inspecter,
 et dialoguer avec le vrai Cerveau Souverain RNI (95 660 neurones / 428 471 liens).
+Prend en charge le format historique .ratiss (JSON/gzip) et le format ultra-rapide .npz (CSR PPMI).
 """
 
 import os
@@ -22,12 +22,28 @@ class RatissRunner:
     def __init__(self, chemin_modele):
         self.chemin_modele = chemin_modele
         t0 = time.time()
+        
+        self.is_v2 = chemin_modele.endswith(".npz")
+        if self.is_v2:
+            from ratiss_v2 import RatissV2
+            self.v2 = RatissV2(chemin_modele)
+            self.meta = self.v2.meta
+            self.neurones = self.v2.vocab
+            self.liens = []
+            self.sanctuaire = self.v2.sanctuaire
+            self.memoire_episodique = self.v2.memoire_episodique
+            self.eth = self.v2.eth
+            self.eth_etat = self.v2.eth_etat
+            self.duree_chargement = time.time() - t0
+            return
+
         self.modele = self._charger_modele(chemin_modele)
         self.duree_chargement = time.time() - t0
         
         self.meta = self.modele.get("META", {})
         self.rni = self.modele.get("RNI_MATRICE", {})
-        self.neurones = self.rni.get("neurones", [])
+        raw_n = self.rni.get("neurones", [])
+        self.neurones = list(raw_n.keys()) if isinstance(raw_n, dict) else list(raw_n)
         self.liens = self.rni.get("liens", [])
         self.sanctuaire = self.modele.get("SANCTUAIRE", {})
         self.memoire_episodique = self.modele.get("MEMOIRE_EPISODIQUE", {})
@@ -35,7 +51,7 @@ class RatissRunner:
         self.eth_etat = {"pouls": self.eth.get("pouls_base", 72), "temperature": 37.0, "ton": "neutre"}
         self.dernier_sujet = None
         
-        # Indexation ultra-rapide des 428 471 liens synaptiques pour l'onde topologique
+        # Indexation des liens synaptiques pour l'onde topologique
         self.adjacence = {}
         for s, d, w in self.liens:
             if s not in self.adjacence:
@@ -54,11 +70,15 @@ class RatissRunner:
             with open(chemin, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-        if data.get("FORMAT") != MAGIC_HEADER:
+        if data.get("FORMAT") not in [MAGIC_HEADER, "RATISS_V2_CSR"]:
             raise ValueError(f"[ERREUR] Format invalide. Attendu {MAGIC_HEADER}, reçu {data.get('FORMAT')}")
         return data
 
     def verifier_integrite(self):
+        if self.is_v2:
+            self.v2.audit()
+            return True
+
         taille_mo = os.path.getsize(self.chemin_modele) / (1024 * 1024)
         print("=" * 68)
         print(f"🧠 AUDIT DU CERVEAU SOUVERAIN [{self.meta.get('NOM_MODELE')}]")
@@ -74,7 +94,7 @@ class RatissRunner:
         return True
 
     def propager_onde(self, mot_graine, top_k=5):
-        """Propage l'onde topologique le long des 428 471 connexions."""
+        """Propage l'onde topologique le long des connexions."""
         mg = mot_graine.lower().strip()
         clef = f"word_{mg}" if f"word_{mg}" in self.adjacence else (mg if mg in self.adjacence else None)
         if not clef:
@@ -88,6 +108,9 @@ class RatissRunner:
         return resultats
 
     def executer(self, message):
+        if self.is_v2:
+            return self.v2.executer(message)
+
         t0 = time.time()
         msg = str(message).strip()
         tokens = set(re.findall(r"\b\w+\b", msg.lower()))
@@ -157,8 +180,7 @@ class RatissRunner:
             rep = f"Avec plaisir mon pote ! {txt}" if self.eth_etat["ton"] == "chaleureux" else txt
             return {"intent": f"sanctuaire_{mode.lower()}", "langue": langue, "reponse": rep, "eth": self.eth_etat}
 
-        # 5. ACTIVATION TOPOLOGIQUE DE LA MATRICE RNI (428 471 LIENS)
-        # Si la question porte sur un mot présent dans la matrice, le RNI répond par résonance !
+        # 5. ACTIVATION TOPOLOGIQUE DE LA MATRICE RNI
         STOP_WORDS = {
             "les", "des", "une", "par", "dans", "pour", "avec", "est", "sont", "que", "sur",
             "qui", "quoi", "dont", "où", "sais", "sait", "peux", "peut", "veut", "fait", "cette", "cet"
@@ -179,9 +201,9 @@ class RatissRunner:
 def main():
     if len(sys.argv) < 2:
         print("Usage :")
-        print("  python3 ratiss-runner.py <modele.ratiss> \"Message à traiter\"")
-        print("  python3 ratiss-runner.py <modele.ratiss> --chat")
-        print("  python3 ratiss-runner.py <modele.ratiss> --check")
+        print("  python3 ratiss-runner.py <modele.ratiss|modele.npz> \"Message à traiter\"")
+        print("  python3 ratiss-runner.py <modele.ratiss|modele.npz> --chat")
+        print("  python3 ratiss-runner.py <modele.ratiss|modele.npz> --check")
         sys.exit(1)
 
     chemin_modele = sys.argv[1]
@@ -193,9 +215,10 @@ def main():
 
     if sys.argv[2] == "--chat":
         print("\n" + "=" * 65)
-        print(f"🤖 RATISS-ONE CHAT INTERACTIF [{runner.meta.get('NOM_MODELE')}]")
-        print(f"🔬 Auteur : {runner.meta.get('AUTEUR')}")
-        print(f"🧬 Graphe : {len(runner.neurones):,} neurones | {len(runner.liens):,} synapses")
+        nom = runner.meta.get("NOM_MODELE", "RATISS-ONE")
+        print(f"🤖 RATISS-ONE CHAT INTERACTIF [{nom}]")
+        print(f"🔬 Auteur : {runner.meta.get('AUTEUR', 'Jonathan Evina')}")
+        print(f"🧬 Graphe : {len(runner.neurones):,} neurones")
         print("💡 Astuce : Tape 'exit' pour quitter.")
         print("=" * 65 + "\n")
         while True:
